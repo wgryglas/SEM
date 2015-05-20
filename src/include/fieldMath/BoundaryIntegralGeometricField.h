@@ -1,0 +1,124 @@
+#ifndef BOUNDARYINTEGRALGEOMETRICFIELD_H
+#define BOUNDARYINTEGRALGEOMETRICFIELD_H
+
+#include "iomanagment/InfoStream.h"
+#include "solver/DiscretOperator.h"
+#include "fields/GeometricField.h"
+#include "fieldMath/TimeExtrapolation.h"
+
+namespace SEM {
+
+template<typename T>
+class BoundaryIntegralDDNGeometricFieldPhi : public las::DiscretOperator<T,BoundaryIntegralDDNGeometricFieldPhi<T> >
+{
+    field::GeometricField<T> & m_field;
+    Scalar m_coeff;
+public:
+    explicit BoundaryIntegralDDNGeometricFieldPhi(field::GeometricField<T> & f, Scalar coeff)
+    :m_field(f), m_coeff(coeff)
+    {
+    }
+    
+    SEM::field::GeometricField<T>* field() { return &m_field;}
+    
+    template<typename Assigner>
+    void buildImplicit(const mesh::Mesh &mesh, las::SEMMatrix &matrix, las::SEMVector &rhsVector, const las::AssigmentBase<Assigner> & assign) const
+    {
+        unsigned int dimSize = CmpTraits<T>::dim();
+        
+        //Apply integrals from Neumann BC
+        //iterate over patches
+        for(const typename field::GeometricField<T>::Patch* patch : m_field.boundaryFields())
+        {
+            const mesh::Boundary & edges = patch->boundaryEdges();
+            //iterate over edges in boundary
+            for(int e=0; e<edges.size(); ++e)
+            {
+                //iterate over filed dimensions
+                for(size_t dim=0; dim < dimSize; ++dim)
+                {
+                    //rhs vector coresponding to boundary element nodes
+//                     numArray<Scalar>::indexMapped rhsSlice(rhsVector[dim],edges.element(e).indexVectorMask());
+                    
+                    //rhs vector nodes coresponding to edge
+                    auto rhsSlice = rhsVector[dim].slice(edges[e].gNodesIds());
+                    
+                    //values to assign for specific dimmension
+                    //  coeff * patchValues * boundaryIntegralCoeffs
+                    auto cmpLocalValues = m_coeff * CmpTraits<T>::cmpArray((*patch)[e],dim) * edges[e].neumanBCPreValue();
+                    
+                    assign(cmpLocalValues, rhsSlice);
+                }
+            }
+        }
+    }
+    
+    template<typename Assigner>
+    void buildExplicit(const mesh::Mesh &elements, las::SEMVector &rhsVector, const las::AssigmentBase<Assigner> & assign) const
+    {
+        ErrorInFunction << "Explicit calculation of boundary integral from GeometricField is not yet implemented.\n"
+        <<"This operator now shall only appear on lhs part of equation"<<iomanagment::endProgram;
+    }
+    
+};
+
+
+class BoundaryIntegralNdotGeometricField : public las::DiscretOperator<Scalar,BoundaryIntegralNdotGeometricField>
+{
+    const field::GeometricField<Vector> & m_field;
+    const Scalar m_coeff;
+public:
+    explicit BoundaryIntegralNdotGeometricField(const field::GeometricField<Vector> & f, Scalar coeff=1.)
+    : m_field(f), m_coeff(coeff)
+    {
+    }
+    
+    DECLARE_AND_BLOCK_IMPLICIT_OPERATOR_FUNCTIONS(Scalar,BoundaryIntegralNdotGeometricField)
+
+    template<typename Assigner>
+    void buildExplicit(const mesh::Mesh &elements, las::SEMVector &rhsVector, const las::AssigmentBase<Assigner> & assign) const
+    {
+        for(const mesh::Boundary & boundary: elements.boundaryMesh())
+        {
+            const field::GeometricField<Vector>::Patch & patch = m_field.patch(boundary.name());
+            
+            for(size_t edge=0; edge<boundary.size(); ++edge)
+            {
+                Vector normal = boundary.normal(edge);
+                numArray<Scalar> edgeValues(boundary[edge].gNodesIds().size());
+                
+                if(patch.typeFamily()==field::DIRICHLET)
+                {
+                    edgeValues = m_coeff*SEM::array::dotProd(normal,patch[edge]);
+                }
+                else //extrapolate from current values
+                {
+                    edgeValues = m_coeff*SEM::array::dotProd( normal, m_field.slice(boundary[edge].gNodesIds()) );
+                }
+            
+                //const numArray<Scalar> edgeValues =m_coeff*dotProd(boundary.normal(edge),patch[edge]);
+                auto edgeRhsVector  = rhsVector[0].slice(boundary[edge].gNodesIds());
+                auto weakValues = edgeValues*boundary[edge].neumanBCPreValue();
+                assign(weakValues,edgeRhsVector);
+            }
+        }
+    }
+
+};
+
+namespace weak{
+
+inline boost::shared_ptr<las::DiscretOperator<Scalar,BoundaryIntegralNdotGeometricField> >
+bInt_UdotNPhi(const field::GeometricField<Vector> & f, const Scalar coeff)
+{
+    return boost::shared_ptr<las::DiscretOperator<Scalar,BoundaryIntegralNdotGeometricField> >
+    (
+        new BoundaryIntegralNdotGeometricField(f,coeff)
+    );
+}
+
+}//weak
+
+}//SEM
+
+#endif // BOUNDARYINTEGRALGEOMETRICFIELD_H

@@ -1,0 +1,321 @@
+#ifndef FILETODICTIONARYREADER_H
+#define FILETODICTIONARYREADER_H
+
+#include <istream>
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <algorithm>
+#include <iterator>
+#include <map>
+#include <vector>
+
+#include "boost/filesystem/path.hpp"
+#include "boost/filesystem/fstream.hpp"
+#include "boost/filesystem/operations.hpp"
+
+#include "utilities/foreach.h"
+#include "iomanagment/Dictionary2.h"
+#include "iomanagment/InfoStream.h"
+
+namespace SEM { namespace iomanagment {
+
+/////////////////////////////////////////////
+// Class::  StreamProcessingIterator
+//-------------------------------------------
+// For iterating over stream
+// while c++ comments are ommited and
+// all white spaces are compressed into single
+// space char: ' '
+//-------------------------------------------
+// note: For proper work stream shall not have
+// switched on white space skipping, to allow
+// keeping information when one each word in
+// stream is ending
+/////////////////////////////////////////////
+class StreamProcessingIterator
+{
+    char cc;
+    std::istream & stream_;
+    bool endFlag;
+
+public:
+    StreamProcessingIterator(const StreamProcessingIterator& c):
+        stream_(c.stream_),cc(c.cc),endFlag(c.endFlag)
+    {
+    }
+
+    StreamProcessingIterator(std::istream & stream, bool atEnd = false):
+        stream_(stream), endFlag(atEnd)
+    {
+        operator ++();
+    }
+
+    char operator *()
+    {
+        return cc;
+    }
+
+    StreamProcessingIterator& operator ++()
+    {
+        if(endFlag)
+            return *this;
+
+        if(!stream_.get(cc))
+        {
+            endFlag = true;
+            return *this;
+        }
+
+        if(processWSChars())
+            return *this;
+
+        if(processLineComment())
+            return *this;
+
+        if(processBlockComment())
+            return *this;
+
+        return *this;
+    }
+
+    bool operator == (StreamProcessingIterator & itr)
+    {
+        return endFlag == itr.endFlag;
+    }
+
+    bool operator !=(StreamProcessingIterator & itr)
+    {
+        return !operator ==(itr);
+    }
+
+private:
+    //--------------------------------------------------
+    //Specific routines for processing next available char:
+    //--------------------------------------------------
+    // If stream shall not be further porcessed in current step
+    // then return true;
+    bool processWSChars()
+    {
+        using std::isspace;
+        if(isspace(cc))
+        {
+            char c2;
+            //Eate next white spaces to have compressed version
+            do
+            {
+                if(!stream_.get(c2) )
+                {
+                    endFlag = true;
+                    return true;
+                }
+            }
+            while(isspace(c2));
+
+            //move back to set white space as last result before next char in stream
+            stream_.unget();
+            //ensure that white space is written as space
+            cc = ' ';
+
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    // If stream shall not be further porcessed in current step
+    // then return true;
+    bool processLineComment()
+    {
+        if(cc == '/')
+        {
+            char c2;
+            if(! stream_.get(c2))
+            {
+                ErrorInFunction<<"Unexpected token \'/\' found at end of file"<<endProgram;
+            }
+
+            if(c2=='/')//Process all chars until end of line is reached
+            {
+                //Eat chars in rest of line
+                do
+                {
+                    if(! stream_.get(c2))
+                    {
+                        endFlag=true;
+                        return true;
+                    }
+                }
+                while(c2!='\n');
+
+                //Make another step to catch not commented char
+                operator ++();
+
+                return true;
+            }
+            else
+            {
+                // Second sign is not '/' - then it was not
+                // a comment, so move back position
+                stream_.unget();
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    // If stream shall not be further porcessed in current step
+    // then return true;
+    bool processBlockComment()
+    {
+        if(cc == '/')
+        {
+            char c2;
+            if(! stream_.get(c2))
+            {
+                endFlag=true;
+                return true;
+            }
+
+            if(c2=='*')//Process multiline comment
+            {
+                do //Eat all signs until */ is reached
+                {
+                    if(! stream_.get(c2))
+                    {
+                        endFlag=true;
+                        return true;
+                    }
+
+                    if(c2=='*') //check if it is not the end of comment block
+                    {
+                        if(! stream_.get(c2))//Unexpected eof
+                        {
+                            ErrorInFunction<<"Unexpected token \'*\' found at end of file"<<endProgram;
+                        }
+
+                        if(c2=='/')//block comment end is reached
+                        {
+                            break;
+                        }
+                        else if(c2=='*') //end sign combination of block comment was not reached, it was only next asterix,
+                        {                //so move current location back, so that it can be again checked if it's end
+                            stream_.unget();
+                        }
+                    }
+                }
+                while(true);
+
+                //Make another step to catch not commented char
+                operator ++();
+
+                return false;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+};
+
+/////////////////////////////////////////////
+// Class::  StreamTokenizer
+//-------------------------------------------
+// Class for making pairs of token and string
+// from stream data. Each token is linked to
+// string data which ware found befor specified
+// token. String is constructed in whay where
+// it never starts with white space and end with
+// it - any number of ws can be found inside string
+// but never trailing nor leading
+//--------------------------------------------
+// note: template arg. must be a char onedirection
+// iterator
+/////////////////////////////////////////////
+template<typename CharIter>
+class StreamTokenizer: public std::vector<std::pair<char, std::string> >
+{
+
+public:
+    typedef std::vector<std::pair<char, std::string> >::iterator iterator;
+
+    StreamTokenizer(CharIter & begin, CharIter & end, char* tokens)
+    {
+        using namespace std;
+
+        std::stringstream value;
+
+        for(begin;begin!=end;++begin)
+        {
+            bool tokFound=false;
+            foreach(char token, tokens)
+            {
+                if(*begin==token)
+                {
+                    string strVal = value.str();
+                    //Remove whitespace from end of value
+                    if( isspace(*(strVal.end()-1)) )
+                        strVal.erase(strVal.end()-1,strVal.end());
+
+                    push_back(std::pair<char,std::string>(token, strVal ) );
+                    value.str(string());
+                    tokFound=true;
+
+                    break;
+                }
+            }
+
+            if(!tokFound)
+            {
+                //don't write char as input when it's first and is white space
+                if(value.tellp()!=0 || ! isspace(*begin) )
+                {
+                    value<<*begin;
+                }
+            }
+        }
+    }
+
+    virtual ~StreamTokenizer(){}
+};
+
+typedef StreamTokenizer<StreamProcessingIterator> SEMDictTokenizer;
+
+/////////////////////////////////////////////////////
+///// Manipulator for skipping white spaces insied
+///// input stream. After operation stream is located
+///// at next non-ws char
+////////////////////////////////////////////////////
+//std::istream nextNonWS(std::istream& stream)
+//{
+//    char c;
+//    do
+//    {
+
+//    }
+//    while(std::isspace(c));
+//    stream.unget();
+
+//    std::skipws(stream);
+//    return stream;
+//}
+
+
+
+}//IOMANAGMENT
+}//SEM
+
+
+
+#endif // FILETODICTIONARYREADER_H

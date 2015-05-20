@@ -1,0 +1,20 @@
+
+#include<iostream>
+
+#include "vector.h"
+#include "matrix.h"
+
+int main(int argc, char* argv[])
+{
+  vector u(1.0, 2.0);
+  vector v(2.0, 1.5);	
+	
+  std::cout<<"vector u: "<<u<<std::endl;
+  std::cout<<"vector v: "<<v<<std::endl;
+  std::cout<<"dot product u*v: "<<u.dot(v)<<std::endl;
+  std::cout<<"cross product uxv: "<<u.cross(v) <<std::endl;
+
+  Matrix I(1,0,0,1);
+  std::cout<<"I*u =" <<I.mult(u)<< std::endl;
+
+}

@@ -1,0 +1,150 @@
+#include "iomanagment/case.h"
+#include "mesh/Mesh.h"
+#include "fields/Fields.h"
+#include "fieldMath/ddt.h"
+#include "fieldMath/laplacian.h"
+#include "fieldMath/f.h"
+#include "fieldMath/postCalculation.h"
+#include "fieldMath/weakGradV.h"
+
+#include "solver/Solver.h"
+#include "utilities/ArrayFunctions.h"
+#include "utilities/VectorUtils.h"
+#include "fields/DiscontinousField.h"
+#include "fieldMath/WeakFormDefinition.h"
+#include "fieldMath/DivergenceOperator.h"
+#include "fieldMath/GradientOperator.h"
+#include "fieldMath/weakDivW.h"
+#include "fieldMath/BoundaryIntegralNRotRotU.h"
+#include "fieldMath/ConvectiveDerivative.h"
+#include "fieldMath/BIntegralAvgPressure.h"
+#include "fieldMath/BIntegral_ddtUdotN.h"
+#include "fields/InletOutletVelocity.h"
+#include "fieldMath/NonlinearOperatorSplitting.h"
+#include "fieldMath/TimeExtrapolation.h"
+
+int main(int argc, char* args[])
+{
+    using namespace SEM;
+    using namespace SEM::iomanagment;
+    using namespace SEM::field;
+    using namespace SEM::mesh;
+    using SEM::iomanagment::NO_READ;
+    using SEM::iomanagment::NO_WRITE;
+    using SEM::weak::phi;
+    using SEM::weak::ddt;
+    using SEM::field::grad;
+    using SEM::weak::ddn;
+    using SEM::weak::grad;
+    using SEM::weak::a;
+    using SEM::weak::bInt_rotUdotNxGradPhi;
+    using SEM::weak::bInt_UdotNPhi;
+    using SEM::bInt_avgPressure;
+    using SEM::bInt_ddtUdotN;
+    
+    using SEM::array::sin;
+    using SEM::array::cos;
+    using SEM::array::abs;
+    
+    //--------------------- SETUP CASE --------------------------------------
+    Case::setup(argc, args);
+    
+    //--------------------- CREATE MESH -------------------------------------
+    Mesh mesh(Case::meshPath(),Case::elementsPath());
+    mesh.writeSpectralNodes(Case::nodesPath());
+    
+//     //--------------------- CREATE FIELDS -----------------------------------
+    //Create U field
+    VectorField U("U",mesh);
+    VectorField Usol("Usol",mesh,NO_READ);
+    VectorField Uerr("Uerr",mesh,NO_READ);
+    ScalarField p("p",mesh, NO_READ);
+    ScalarField psol("psol",mesh,NO_READ);
+    ScalarField perr("perr", mesh,NO_READ);
+    
+    ScalarField p_ext("p_ext",mesh,NO_READ,NO_WRITE);
+    VectorField force("force",mesh, NO_READ);
+    
+    ScalarField divU("divU", mesh, NO_READ);
+    //--------------------- GET COEFFS -----------------------------------
+    
+    Scalar dt = Case::time().timeStep();
+    
+    Scalar nu = Case::material()["nu"];
+    
+    //--------------------- SOLVE EQUATION -----------------------------------
+    p = 0;
+    p |= "wallPressure";
+    p.registryFile()->fireWriting();
+    U = Vector::ZERO();
+    U.registryFile()->fireWriting();
+    
+    auto X = xCmps(mesh.spectralNodes());
+    auto Y = yCmps(mesh.spectralNodes());
+    
+    Scalar pi = 4.*std::atan(1);
+    
+    numArray<Scalar> spx =sin(pi*X);
+    numArray<Scalar> cpx =cos(pi*X);
+    numArray<Scalar> s2px =sin(2.*pi*X);
+    numArray<Scalar> c2px =cos(2.*pi*X);
+    numArray<Scalar> spy =sin(pi*Y);
+    numArray<Scalar> cpy =cos(pi*Y);
+    numArray<Scalar> s2py =sin(2.*pi*Y);
+    numArray<Scalar> c2py =cos(2.*pi*Y);
+    
+    //solve time loop
+    DiscontinousField<Vector> force2(mesh);
+    while(!Case::time().end())
+    {
+        ++Case::time();
+        
+        Scalar t=Case::time().time();
+        Scalar st = std::sin(t);
+        Scalar ct = std::cos(t);
+        //--setup assumed solution--------------
+        
+        xCmps(Usol) = (1.-c2px)*s2py*st;
+        yCmps(Usol) = -(1.-c2py)*s2px*st;
+        
+        psol = 0.;
+        
+        xCmps(force) = (1.-c2px)*s2py*ct + (1.-c2px)*s2py*st*2.*pi*s2px*s2py*st - (1.-c2py)*s2px*st*2.*pi*(1.-c2px)*c2py*st - nu*4.*pi*pi*(c2px*s2py*st - (1.-c2px)*s2py*st);
+        yCmps(force) =-(1.-c2py)*s2px*ct - (1.-c2px)*s2py*st*(1.-c2py)*2.*pi*c2px*st + (1.-c2py)*s2px*st*2.*pi*s2py*s2px*st - nu*4.*pi*pi*((1.-c2py)*s2px*st - c2py*s2px*st);
+        force2 = force;
+        std::vector<Scalar> timeCoeffs = selectDiscretizationScheme(U);
+        
+        p_ext = extInTime(p);
+        
+        DiscontinousField<Vector> oldTimeTerms(mesh);
+        oldTimeTerms = 0.;
+        for(unsigned int i=1; i<timeCoeffs.size();++i)
+        {
+            oldTimeTerms += timeCoeffs[i]/dt*oifsConvDerivative(U,dt,i-1);
+        }
+        las::solve
+        (
+            a(timeCoeffs[0]/dt,U,phi) + a(nu*grad(U),grad(phi)) == a(p_ext,grad(phi)) + a(force2,phi) - a(oldTimeTerms,phi) - bInt_avgPressure(p,U)
+        );
+        
+
+        las::solve
+        (
+            a(grad(p),grad(phi)) == a(force2-cDeriv(U,U),grad(phi)) +  bInt_rotUdotNxGradPhi(U,nu) - bInt_ddtUdotN(U)
+        );
+
+        
+        divU=div(U);
+        
+        size_t n = X.size()/2;
+        p += (psol[n]-p[n]);
+        
+        perr = abs(psol-p)/(1.+abs(psol));
+        Uerr = abs(Usol-U)/(1.+abs(Usol));
+        
+        Case::time().fireWriting();
+        
+    }
+    
+    return 0;
+}

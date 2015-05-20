@@ -1,0 +1,55 @@
+#ifndef FIXEDVALUEFROMFILE_H
+#define FIXEDVALUEFROMFILE_H
+
+#include "fields/FixedValuePatch.h"
+
+namespace SEM { namespace field {
+
+template<typename T>
+class InterpolatedFixedValuePatch : public FixedValuePatch<T>
+{
+    typedef PatchField<T> baseType;
+    
+    std::string m_fileName;
+    
+public:
+    static std::string TYPE_NAME;
+    
+    InterpolatedFixedValuePatch(const mesh::Boundary &edges) 
+    : baseType(edges)
+    {
+    }
+    
+    InterpolatedFixedValuePatch(const FixedValueFromFile<T>& other)
+        : baseType(other)
+    {
+    }
+    
+    std::string typeName() const {return FixedValueFromFile<T>::TYPE_NAME;}
+    std::string typeFamily() const {return DIRICHLET;}
+    
+    // ----------------------------------------------------------------//
+    //      EXPRESION TEMPLATES HANDLING
+    // ----------------------------------------------------------------//
+    /// copy constructor from expresion
+    template<typename Exp>
+    InterpolatedFixedValuePatch(const array::ET_Array<T,Exp> & exp): baseType(exp)
+    {
+    }
+
+    
+    /// asigment operators from expressions
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE( =, T, InterpolatedFixedValuePatch<T>,baseType)
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE(+=, T, InterpolatedFixedValuePatch<T>,baseType)
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE(-=, T, InterpolatedFixedValuePatch<T>,baseType)
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE(*=, T, InterpolatedFixedValuePatch<T>,baseType)
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE(/=, T, InterpolatedFixedValuePatch<T>,baseType)
+};
+    
+    template<typename T>
+    std::string InterpolatedFixedValuePatch<T>::TYPE_NAME = "interpolatedFixedValue";
+
+} //field
+} //SEM
+
+#endif // FIXEDVALUEFROMFILE_H

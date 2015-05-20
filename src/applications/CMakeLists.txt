@@ -1,0 +1,37 @@
+# PROJECT_DIR/SRC/APPLICATIONS
+
+cmake_minimum_required(VERSION 2.6)
+project(SEM_SRC_APPLICATIONS)
+
+add_subdirectory(test)
+add_subdirectory(laplace)
+add_subdirectory(laplaceVectorField)
+add_subdirectory(stokes)
+
+
+
+add_subdirectory(laplaceSteadyTestSolution)
+add_subdirectory(laplaceSteadyZeroNeuman)
+add_subdirectory(stokesTestSolution)
+add_subdirectory(laplaceTransientSolutionTest)
+add_subdirectory(stokesPASTest)
+add_subdirectory(stokesVASTest)
+add_subdirectory(laplaceSteadyTestUnifromBoundaryValue)
+add_subdirectory(laplaceMixedBCTest)
+add_subdirectory(laplaceMixedBCTransientTest)
+add_subdirectory(stokesPAS)
+
+add_subdirectory(nsPAS)
+add_subdirectory(nsVASOpen)
+add_subdirectory(nsPASOpen)
+
+add_subdirectory(nsPPE)
+add_subdirectory(postCalc)
+add_subdirectory(nsVASTestNununiformBC)
+add_subdirectory(nsVASTestUniformBC)
+add_subdirectory(nsPPETestNununiformBC)
+add_subdirectory(nsPASTestNonuniformBC)
+add_subdirectory(stokesVAS)
+add_subdirectory(nsPAS_2_Temp)
+add_subdirectory(probeLocation)
+add_subdirectory(nsSRM)

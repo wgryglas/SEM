@@ -1,0 +1,95 @@
+#ifndef LINEARINTERPOLATOR_H
+#define LINEARINTERPOLATOR_H
+
+namespace SEM { namespace field {
+
+template<typename T>
+struct LinearInterpolator
+{
+   LinearInterpolator()
+   {
+   }
+    
+   LinearInterpolator(const std::vector<std::pair<Scalar,T> > & values)
+   : m_values(values)
+   {
+   }
+   
+   LinearInterpolator(const LinearInterpolator<T> & other)
+   : m_values(other.m_values)
+   {
+   }
+   
+   void update(const std::vector<std::pair<Scalar,T> > & values)
+   {
+       m_values = values;
+   }
+   
+   void update(const iomanagment::DictEntry & valueEntry)
+   {
+       std::vector<std::array<Scalar,CmpTraits<T>::DIM_SIZE+1> > tableInput;
+       valueEntry>>tableInput;
+       
+       m_values.clear();
+       m_values.reserve(tableInput.size());
+       for(size_t i=0; i<tableInput.size(); ++i)
+       {
+           T val;
+           for(unsigned int d=0; d< CmpTraits<T>::dim(); ++d)
+               CmpTraits<T>::component(val,d)=tableInput[i][d+1];
+           
+           m_values.push_back(std::pair<Scalar,T>(tableInput[i][0],val));
+       }
+   }
+   
+   void writeValues(iomanagment::DictEntry & valueEntry) const
+   {
+       std::stringstream out;
+       out << "(\n";
+       for(unsigned int i=0; i<m_values.size(); ++i)
+       {
+            out<< "( "<< m_values[i].first;
+            
+            for(unsigned int d=0; d< CmpTraits<T>::dim(); ++d)
+            {
+                out << ' ' << CmpTraits<T>::component(m_values[i].second,d);
+            }
+           
+           out << ")\n";
+       }
+       out << ")\n";
+       
+       valueEntry.setStrValue(out.str());
+   }
+    
+    T operator()(const Scalar & current) const
+    {
+        unsigned int begin =-1;
+        for(unsigned int i=0; i<m_values.size()-1; ++i)
+        {
+            if(current >= m_values[i].first && current < m_values[i+1].first)
+            {
+                begin = i;
+            }
+        }
+        
+        if(begin ==-1)
+        {
+            if(m_values[0].first < current)
+                return m_values.back().second;
+            else
+                return m_values[0].second;
+        }
+        
+        Scalar c = (current-m_values[begin].first)/(m_values[begin+1].first-m_values[begin].first);
+        return (m_values[begin+1].second -m_values[begin].second)*c + m_values[begin].second;
+    }
+  
+  private:
+      std::vector<std::pair<Scalar,T> > m_values;
+};  
+
+} //field
+} //SEM
+
+#endif // LINEARINTERPOLATOR_H

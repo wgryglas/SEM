@@ -1,0 +1,68 @@
+
+#include "case.h"
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <regex>
+
+using namespace std;
+
+namespace SEM
+{
+	string case::casePath = "";
+
+	Case::Case
+	(
+		int size,
+		char* args[]
+	)
+	{
+		std::ostringstream sstream(args[0]);
+
+		string s(args[0]);
+
+		regex delimiter("\\\\");
+
+		smatch sresult;
+
+		vector<string> path;
+		//casePath = sresult.prefix().str();
+		while(regex_search(s,sresult,delimiter))
+		{
+			path.push_back(sresult.prefix());
+			s= sresult.suffix();
+		}
+
+		for(vector<string>::iterator ss=path.begin();ss!=path.end()-1; ss++)
+		{
+			Case::casePath += *ss;
+			if(ss!=path.end()-2)
+				Case::casePath +="\\";
+		}
+	};
+
+
+	Case::Case
+	(
+		string workingPath
+	)
+	{
+		Case::casePath=workingPath;
+	};
+
+	string Case::operator+
+	(
+		string s
+	)
+	{
+		return Case::casePath+s;
+	};
+
+	ostream& operator<<(ostream& o, Case c)
+	{
+		o<<c.casePath;
+		return o;
+	}
+
+
+}

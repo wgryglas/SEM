@@ -1,0 +1,25 @@
+.*
+!.gitignore
+
+#Ignore build direcotries
+build*
+Build*
+Debug*
+export
+tmp
+Release
+*.zip
+
+#Ignore qt projects
+*.pro
+*.pro.*
+*.pri
+
+#Ignore kdev project
+*.kdev4
+
+#Ignore MSVC projects
+*.vcxproj
+*.sdf
+*.suo
+*.sln

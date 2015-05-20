@@ -1,0 +1,111 @@
+#ifndef PATCHFIELD_H
+#define PATCHFIELD_H
+
+#include "iomanagment/RegistryFile.h"
+#include "components/Basic.h"
+#include "utilities/Reference.h"
+
+#include "mesh/Boundary.h"
+
+#include "GenericField.h"
+
+namespace SEM { namespace field {
+
+template<typename T>
+class PatchField : public GenericField<T>
+{
+    REFERENCE_TYPE(PatchField<T>)
+
+    typedef GenericField<T> baseType;
+
+    const mesh::Boundary &m_edges;
+    std::string m_name;
+
+public:
+    using baseType::setRegistryFile;
+
+    PatchField(iomanagment::RegistryFile::ref regFile, const std::string & name, const mesh::Boundary &edges)
+        : baseType(edges.size()), m_edges(edges), m_name(name)
+    {
+        setRegistryFile(regFile);
+    }
+
+    PatchField(const std::string &name, const mesh::Boundary &edges)
+        : baseType(edges.size()), m_edges(edges), m_name(name)
+    {
+    }
+
+
+    PatchField(const PatchField& other)
+        : baseType(other.expSize()), m_edges(other.m_edges), m_name(other.m_name)
+    {
+    }
+
+    virtual ~PatchField(){}
+
+    const mesh::Boundary & boundaryEdges() const { return m_edges;}
+
+    // ----------------------------------------------------------------//
+    //      PATCH INTERFACE TO IMPLEMENT
+    // ----------------------------------------------------------------//
+    virtual void updateCoeffs()=0;
+    virtual Scalar neumanCoeff() const=0;
+    virtual Scalar dirichletCoeff() const=0;
+    virtual std::string typeName() const =0;
+
+
+    virtual void read(const iomanagment::Dictionary &fieldDict)
+    {
+        fieldDict.subDictionary("boundary").subDictionary(m_name).entry("value")>>*this;
+    }
+
+    virtual void write(iomanagment::Dictionary &fieldDict)
+    {
+        iomanagment::DictEntry *typeEntry =new iomanagment::DictEntry("type",typeName());
+
+        iomanagment::DictEntry *valEntry =new iomanagment::DictEntry("value");
+        *valEntry<<*this;
+
+        iomanagment::Dictionary *bDict = new iomanagment::Dictionary(m_name);
+        bDict->add(typeEntry);
+        bDict->add(valEntry);
+
+        if(!fieldDict.hasSubDictionary("boundary"))
+            fieldDict.add(new iomanagment::Dictionary("boundary"));
+
+        fieldDict.subDictionary("boundary").add(bDict);
+    }
+
+
+    // ----------------------------------------------------------------//
+    //      EXPRESION TEMPLATES HANDLING
+    // ----------------------------------------------------------------//
+    /// copy constructor from expresion
+    template<typename Exp>
+    PatchField(const array::ET_Array<T,Exp> & exp): baseType(exp)
+    {
+    }
+
+    /// assign from single value
+    PatchField<T> & operator = (const T& singVal)
+    {
+        baseType::operator =(singVal);
+        return *this;
+    }
+
+    /// asigment operators from expressions
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE( =, T, PatchField<T>,baseType)
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE(+=, T, PatchField<T>,baseType)
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE(-=, T, PatchField<T>,baseType)
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE(*=, T, PatchField<T>,baseType)
+    ALLOW_EXP_TEMP_UNARY_OP_IN_DERIVED_FROM_NUMARRAYBASE(/=, T, PatchField<T>,baseType)
+
+};
+
+
+
+
+}//field
+}//SEM
+
+#endif // PATCHFIELD_H

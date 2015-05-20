@@ -1,0 +1,228 @@
+
+#include "iomanagment/FileProcessor.h"
+
+namespace SEM
+{
+namespace IOStream
+{
+
+  FileProcessor::FileProcessor( const string filePath )
+  : itr(0), delimiters("\\{|\\}|\\<|\\>|\\(|\\)|\\;|\\,"), line_comment_delimiter("(\\/\\/)")
+	{
+		toknizeFile(filePath);
+	};
+
+	void FileProcessor::goForeward()
+	{
+		itr++;
+	}
+
+	void FileProcessor::operator++()
+	{
+		itr++;
+	}
+
+	void FileProcessor::operator++(int t)
+	{
+		itr+=t;
+	}
+
+	void FileProcessor::goForeward( int step )
+	{
+		itr++;
+	}
+
+	void FileProcessor::operator+=( int step )
+	{
+		itr+=step;
+	};
+
+	string FileProcessor::getNextToken()
+	{
+		if(tokens.size()>itr+1)
+			return tokens[itr+1];
+		else
+			return "";
+	};
+
+	string FileProcessor::getPreviousToken()
+	{
+		if(itr-1>=0)
+			return tokens[itr-1];
+		else
+			return "";
+	};
+
+	string FileProcessor::getPreviousPreviousToken()
+	{
+		if(itr-2>=0)
+			return tokens[itr-2];
+		else
+			return "";
+	};
+
+	string FileProcessor::getToken()
+	{
+		return tokens[itr];
+	};
+
+	void FileProcessor::goToBegin()
+	{
+		itr = 0;
+	};
+
+	bool FileProcessor::goTo( int place )
+	{
+		if(place<tokens.size())
+		{
+			itr = place;
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	};
+
+	bool FileProcessor::goTo( const string tokenName )
+	{
+		int temp=-1;
+		bool search;
+		vector<string>::iterator i=tokens.begin();
+
+		while(i < tokens.end() && search)
+		{
+			if(*i==tokenName)
+			{
+				itr= temp;
+				search=false;
+			}
+
+			i++;
+			temp++;
+		}
+
+		if(search)
+		{
+			return false;
+		}
+		else
+		{
+			return true;
+		}
+	};
+
+	void FileProcessor::goToEnd()
+	{
+		itr = tokens.size()-1;
+	};
+
+
+	int FileProcessor::getCurrentTokenId()
+	{
+		return itr;
+	}
+
+	vector<string> FileProcessor::getTokens()
+	{
+		return tokens;
+	}
+
+	int FileProcessor::getNumberOfTokens()
+	{
+		return tokens.size();
+	}
+
+	bool FileProcessor::end()
+	{
+		if(itr==tokens.size())
+			return true;
+		else
+			return false;
+	}
+
+
+	void FileProcessor::toknizeFile( const string filePath )
+	{
+	  ifstream file;
+    file.open(filePath.data());
+		string temp;
+		while(file.good())
+		{
+		  file>>temp;
+			if(splitByDelimiters(temp,tokens))
+				 file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+		}
+
+		file.close();
+	};
+
+  bool FileProcessor::splitByDelimiters( string s, vector<string>& tokens)
+	{
+//		boost::smatch sresult;
+//		string temp;
+//		while(boost::regex_search(s,sresult,delimiters))
+//		{
+//		  if(sresult[0].str().size()!=0)
+//			{
+//        //if delimiter was not the first one sign in string, write it as token
+//				if(sresult.prefix().length()!=0)
+//				{
+//					tokens.push_back(sresult.prefix());
+//				}
+//
+//        //if delimiter is diffrent then comment one, write delimiter as token
+//        //else inform that whole line need to be commented
+//				if(sresult[0].str()!="//")
+//					tokens.push_back(sresult[0].str());
+//				else
+//					return true;
+//			}
+//
+//      //if suffix of delimiter spliting exist- wrtie it as input string to next iteration
+//      //otherwise set string to null, and get out from loop
+//			if(sresult.suffix().length()!=0)
+//			{
+//				s=sresult.suffix().str();
+//			}
+//			else
+//			{
+//				s="";
+//				break;
+//			}
+//		}
+//
+//    //If none of delimiters has been found, it means that string s is the only token
+//    //add it to list
+//    if(s.size()!=0)
+//    {
+//      tokens.push_back(s);
+//    }
+
+
+    //Check if comment line delimiter exist in input string:
+    bool comment_exist = false;
+    boost::sregex_token_iterator i_c(s.begin(), s.end(), line_comment_delimiter, -1);
+    boost::sregex_token_iterator j_c(i_c);
+    boost::sregex_token_iterator k;
+    if(++j_c!=k)
+    {
+      s = *i_c;
+      comment_exist=true;
+    }
+
+    //Split string with delimiters
+    boost::sregex_token_iterator i_s(s.begin(), s.end(), delimiters, -1);
+    int itr=0;
+    while(itr<2 && i_s!=k)
+    {
+      is++;
+      tokens.push_back(*i_s);
+    }
+
+    return comment_exist;
+	};
+
+
+}
+}

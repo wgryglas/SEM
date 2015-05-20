@@ -1,4 +1,4 @@
-
+/*
 #ifndef _setRootCase_H_
 #define _setRootCase_H_
 
@@ -16,4 +16,4 @@ cout<<info<<"setting root case..."<<endl;
 cout<<endInfo;
 
 
-#endif _setRootCase_H_
+#endif _setRootCase_H_*/

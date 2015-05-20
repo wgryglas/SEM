@@ -9,7 +9,14 @@ project(SEM)
 # comand line argument for debug:
 #-DCMAKE_BUILD_TYPE=Debug
 #SET(CMAKE_CXX_FLAGS "-std=c++0x")
-SET(CMAKE_CXX_FLAGS "-std=c++0x -O3")
+
+
+
+if(NOT (${CMAKE_BUILD_TYPE} EQUAL Debug ) )
+  set(CMAKE_CXX_FLAGS "-std=c++0x -O3")
+else(NOT (${CMAKE_BUILD_TYPE} EQUAL Debug ) )
+  set(CMAKE_CXX_FLAGS "-std=c++0x")
+endif(NOT (${CMAKE_BUILD_TYPE} EQUAL Debug ) )
 
 #################################################
 #       BUILD VARIABLES SETUP
@@ -22,13 +29,25 @@ SET (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/out/application )
 #################################################
 #       GLOBAL VARIABLES
 #################################################
-set(PRJ /home/wojtek/cpp/SEM/SEM_PROJECT)
-set(SYS_DIR_NAME linux)
+#set(PRJ /home/wojtek/cpp/SEM/SEM_PROJECT)
+#set(PRJ /home/wgryglas/cppProjects/SEM)
+set(PRJ ${CMAKE_CURRENT_LIST_DIR})
+
+if(${UNIX})
+	set(SYS_DIR_NAME linux)
+else(${UNIX})
+	message("Only linux os family is supported now")
+	return()
+endif(${UNIX})
 
 set(SRC ${PRJ}/src)
 set(THIRD_PARTY ${PRJ}/third-party)
 #set(EXPORT ${PRJ}/export/${SYS_DIR_NAME})
-set(EXPORT /home/wojtek/Apps/SMESH/SEM)
+#set(EXPORT /home/wojtek/Apps/SMESH/SEM)
+#set(EXPORT /home/wgryglas/Applications/SMESH/SEM)
+set(EXPORT ${CMAKE_INSTALL_PREFIX})
+
+message("export is ${EXPORT}")
 
 set(APP_SRC ${SRC}/application)
 set(LIB_SRC ${SRC}/lib)

@@ -17,6 +17,24 @@ class DiscretEquation
     
     SEM::field::GeometricField<T> &m_solveField;
     
+    template<typename eq>
+    SEMVector buildAsExplicit(boost::shared_ptr<DiscretOperator<T, eq> > equation)
+    {
+      const mesh::Mesh &mesh = m_solveField.mesh();
+      Scalar unknownNumber= mesh.spectralNodes().size();
+      size_t dim = CmpTraits<T>::dim();
+      SEMVector rhs(dim);
+      
+      for(size_t d=0; d<dim; ++d)
+      {
+	  rhs[dim].resize(unknownNumber, 0.);
+      }
+      AddEqAssigment assigner;
+      equation->buildExplicit(mesh,rhs,assigner);
+      return rhs;
+    }
+    
+    
 public:
     DiscretEquation(boost::shared_ptr<DiscretOperator<T, Implicit> > implicitPart, boost::shared_ptr<DiscretOperator<T, Explicit> > explicitPart):
         m_implicitPart(implicitPart), m_explicitPart(explicitPart), m_solveField(*implicitPart->field())
@@ -26,8 +44,38 @@ public:
     SEM::field::GeometricField<T> &field() { return m_solveField;}
     
     // Compiler generated copy,assigne 
-
+    
+    bool isDiagonal() const
+    {
+        return m_implicitPart->isMatrixDiagonal();
+    }
+   
     virtual ~DiscretEquation(){}
+    
+    
+    void buildExplicitEquation(SEMVector & rhsVector) const 
+    {
+        const mesh::Mesh &mesh = m_solveField.mesh();
+        Scalar unknownNumber= mesh.spectralNodes().size();
+        size_t dim = CmpTraits<T>::dim();
+        
+        SEMVector lhsVector(dim);
+        rhsVector.resize(dim);
+        for(size_t d=0; d<dim; ++d)
+        {
+            rhsVector[d].resize(unknownNumber, 0.);
+            lhsVector[d].resize(unknownNumber, 0.);
+        }
+        
+        AddEqAssigment assigner;
+        m_implicitPart->buildMatrixAsDiagonal(mesh,lhsVector, rhsVector, assigner);
+        m_explicitPart->buildExplicit(mesh,rhsVector,assigner);
+        
+        for(size_t d=0; d<dim; ++d)
+        {
+            rhsVector[d] /= lhsVector[d];
+        }
+    }
     
     void buildEquation(SEMMatrix &matrix, SEMVector &rhsVector) const
     {

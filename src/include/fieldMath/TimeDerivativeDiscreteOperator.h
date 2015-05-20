@@ -43,6 +43,12 @@ public:
     
     field::GeometricField<T> * field() { return &m_field;}
     
+    bool isMatrixDiagonal() const { return true; }
+      
+   
+    template<typename DerivedAssigner>
+    void buildMatrixAsDiagonal(const mesh::Mesh &mesh, las::SEMVector & diagonal, las::SEMVector &rhsVector, const las::AssigmentBase<DerivedAssigner> &assigner) const;
+    
     template<typename DerivedAssigner>
     void buildImplicit(const mesh::Mesh &mesh, las::SEMMatrix & matrix, las::SEMVector &rhsVector, const las::AssigmentBase<DerivedAssigner> &assigner) const;
     
@@ -168,6 +174,56 @@ void TimeDerivativeDiscreteOperator<T>::buildExplicit(const mesh::Mesh &mesh, la
         }
     }
     
+}
+
+template<typename T>
+template<typename DerivedAssigner>
+void TimeDerivativeDiscreteOperator<T>::buildMatrixAsDiagonal(const mesh::Mesh &mesh, las::SEMVector & diagonal, las::SEMVector &rhsVector, const las::AssigmentBase<DerivedAssigner> &assign) const
+{
+    using namespace iomanagment;
+    
+    //Steady state, do nothing
+    if(m_coeffs.size()==0)
+        return;
+    
+    //Check if there are at laste 2 coefficients
+    if(m_coeffs.size()<2)
+        ErrorInFunction<<"Can't discretize first time derivative of fild with less\n"
+        <<"then 2 coefficients for time steps"<<endProgram;
+        
+    
+    const mesh::Mesh & elements = m_field.mesh();
+    
+    size_t dimSize = CmpTraits<T>::dim();
+    
+    //Iterate over elements
+    for(size_t e=0; e<elements.size(); ++e)
+    {
+        numArray2D<Scalar>::const_mappedArray massVector(elements[e].massMatrix(), elements[e].localNodesInMatrix());
+        
+        //iterate over filed dimmensions
+        for(size_t dim =0; dim < dimSize; ++dim)
+        {
+            numArray<Scalar>::indexMapped localLhs(diagonal[dim], elements[e].indexVectorMask());
+            
+            //Assign discretization elements to local matrix
+            Scalar coeff = m_coeffs[0]/m_dt;
+            assign( massVector*coeff, localLhs );
+            
+            //Get element rhs vector
+            numArray<Scalar>::indexMapped localRhs(rhsVector[dim], elements[e].indexVectorMask());
+            
+            //Assign as many previous times as discretization scheme demands to
+            for(int i=1; i<m_coeffs.size(); ++i)
+            {
+                //Assign discretization elements to part of rhs-vector
+                coeff = -m_coeffs[i]/m_dt;
+                const std::vector<int>& vecMask = elements[e].indexVectorMask();
+                assign( massVector*CmpTraits<T>::cmpArray(m_field.oldField(i-1),dim).slice(vecMask)*coeff, localRhs );
+            }
+        }
+        
+    }
 }
 
 

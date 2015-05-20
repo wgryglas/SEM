@@ -8,7 +8,9 @@
 #include "EquationAssignment.h"
 #include "DiscretOperator.h"
 #include "iomanagment/InfoStream.h"
+#include <boost/fusion/adapted/std_pair.hpp>
 
+class A;
 namespace SEM { namespace las {
 /** ****************************************************************************
  * \class CompoundDiscretOperator
@@ -65,6 +67,19 @@ public:
         
         return m_lhs->field();
     }
+    
+    bool isMatrixDiagonal() const
+    {
+        return m_lhs->isMatrixDiagonal() && m_rhs->isMatrixDiagonal();
+    }
+    
+    template<typename Assigner>
+    void buildMatrixAsDiagonal(const mesh::Mesh& mesh, SEMVector &diagonal, SEM::las::SEMVector & rhsVector, const AssigmentBase<Assigner> & lhsAssigner) const
+    {
+        m_lhs->buildMatrixAsDiagonal(mesh, diagonal, rhsVector, lhsAssigner);
+	m_rhs->buildMatrixAsDiagonal(mesh, diagonal, rhsVector, m_rhsAssigner);
+    }
+    
     
     template<typename Assigner>
     void buildImplicit(const mesh::Mesh& mesh, SEMMatrix &matrix, SEMVector &rhsVector, const AssigmentBase<Assigner> & lhsAssigner) const

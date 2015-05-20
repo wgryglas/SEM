@@ -1,4 +1,4 @@
-
+/*
 #ifndef _createTime_H_
 #define _createTime_H_
 
@@ -8,4 +8,4 @@ cout<<info<<"creating time ...."<<endl;
 cout<<endInfo;
 
 
-#endif _createTime_H_
+#endif _createTime_H_*/

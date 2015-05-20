@@ -1,4 +1,4 @@
-
+/*
 
 
 cout<<info<<"creating T filed ...."<<endl;
@@ -7,4 +7,4 @@ ScalarField T(TFile, mesh);
 
 cout<<endInfo;
 
-
+*/

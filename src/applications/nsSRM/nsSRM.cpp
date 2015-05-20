@@ -57,42 +57,41 @@ int main(int argc, char* args[])
     
     //--------------------- SOLVE EQUATION -----------------------------------
     Scalar eps = 1e-2;
-    Scalar alpha1=1;
-    Scalar alpha2=1;
+    Scalar alpha1=1./eps;
+    Scalar alpha2=1./eps;
 
     DiscontinousField<Scalar> divU(mesh);
     divU = div(U);
     
     DiscontinousField<Scalar> ddtDivU(mesh);
     ddtDivU = 0;
-       
+
+    DiscontinousField<Scalar> disP(mesh);
+    
     //solve time loop
     while(!Case::time().end())
     {
         ++Case::time();
         
-        std::vector<Scalar> timeCoeffs = selectDiscretizationScheme(U);
+	//Fixed euler
+        //std::vector<Scalar> timeCoeffs = selectDiscretizationScheme(U);
         
-        for(int i=0; i<timeCoeffs.size(); ++i)
+        for(int s=0; s<2; ++s)
         {
-            DiscontinousField<Vector> Residue = a(eps*nu*grad(U),grad(phi));
-            Residue -= a(cDeriv(eps*U,U),phi);
-            Residue -= a(eps*p, grad(phi));
-            Residue += a(divU+ddtDivU,grad(phi));
+            auto rhs =  a(U.oldField(0),phi) + a( (dt*nu)*grad(U), grad(phi) ) -  a( dt*cDeriv(U,U), phi ) - a( dt*disP, grad(phi) ) - a( (dt*alpha1)*ddtDivU+(dt*alpha2)*divU, grad(phi) );
+//            auto rhs =  a(eps/dt*U.oldField(0),phi) + a( (eps*nu)*grad(U), grad(phi) )  - a( eps*cDeriv(U,U), phi ) - a( eps*disP, grad(phi) );
+	   
+            las::solve( a( U, phi ) == rhs );
             
-            for(unsigned int i=1; i<timeCoeffs.size(); ++i)
-            {
-                Residue-=eps*timeCoeffs[i]/dt*U.oldField(i-1);
-            }
-            
-            U = U + dt/timeCoeffs[0]* Residue;
-            
+	    ddtDivU = -divU/dt;
             divU = div(U);
-            ddtDivU = ddt(divU);
+            ddtDivU += divU/dt;
             
-            p = p  -  1./eps * (alpha1*divU + alpha2*ddtDivU);
+            disP = disP  - (alpha1*divU + alpha2*ddtDivU);
         }
         
+        p = disP;
+	
         Case::time().fireWriting();
     }
     

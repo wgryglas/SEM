@@ -14,6 +14,8 @@
 #include "EquationAssignment.h"
 
 namespace SEM { namespace las{
+  
+  
 
     /** ******************************************************
      * \class DiscretOperator
@@ -58,6 +60,17 @@ namespace SEM { namespace las{
             return static_cast<Derived*>(this)->field();
         }
         
+       bool isMatrixDiagonal() const
+       {
+	   static_cast<const Derived*>(this)->isMatrixDiagonal();
+       }
+        
+        template<typename Assigner>
+        void buildMatrixAsDiagonal(const mesh::Mesh& mesh, SEM::las::SEMVector & diagonal, SEM::las::SEMVector & rhsVector, const SEM::las::AssigmentBase<Assigner> & assigner) const
+        {
+	    static_cast<const Derived*>(this)->buildMatrixAsDiagonal(mesh, diagonal, rhsVector, assigner);
+	}
+        
         /// \brief interface which allows to build eqution directly into matrix and rhsVector.
         /// The way how equation shall be bild is delegated to Derived class, which must implement
         /// the same method declaration as below.
@@ -85,17 +98,30 @@ namespace SEM { namespace las{
             static_cast<const Derived*>(this)->buildExplicit(mesh,rhsVector,assigner);
         }
     };
+
+#define DECLARE_AND_BLOCK_DIAGONAL_TYPE(OPERATOR_NAME)                                      \
+    bool isMatrixDiagonal() const {return false;}                                           \
+    template<typename Assigner>                                                             \
+    inline void buildMatrixAsDiagonal(const mesh::Mesh&, SEM::las::SEMVector & diagonal,    \
+					SEM::las::SEMVector & rhsVector,                    \
+                                  const SEM::las::AssigmentBase<Assigner> & assigner) const \
+    {                                                                                       \
+        using namespace SEM::iomanagment;                                                   \
+        ErrorInFunction << "Trying to obtain diagonal matrix version, while \n"             \
+                        << "OPERATOR_NAME operator is defined as non diagonal"              \
+                        << endProgram;                                                      \
+    }
     
     
 #define DECLARE_AND_BLOCK_IMPLICIT_OPERATOR_FUNCTIONS(OPERATOR_NAME,T_NAME)                 \
     SEM::field::GeometricField<T_NAME>* field()                                             \
     {                                                                                       \
         using namespace SEM::iomanagment;                                                   \
-        ErrorInFunction << "Trying to use explicit operator as implicit.\n"                 \
+        ErrorInFunction << "Trying to use explicit operator buildas implicit.\n"            \
                         << "OPERATOR_NAME shall not appear on lhs of equation \n"           \
                         << "Wrong discret equation definition \n"                           \
                         << endProgram;                                                      \
-        return nullptr;                                                                        \
+        return nullptr;                                                                     \
     }                                                                                       \
     template<typename Assigner>                                                             \
     inline void buildImplicit(const SEM::mesh::Mesh &elements,SEM::las::SEMMatrix &matrix,  \
@@ -108,8 +134,9 @@ namespace SEM { namespace las{
         << "Wrong discret equation definition \n"                                           \
         << endProgram;                                                                      \
     }                                                                                       \
+    DECLARE_AND_BLOCK_DIAGONAL_TYPE(OPERATOR_NAME)
     
-    
+  
     // OLD STUFF USING IMPLICIT AND EXPLICIT OPERATORS SEPARETE - BETTER WAY, BUT DON'T RESOLVE SHARED_PTR PROBLEM
     
     //       template<typename T, typename Derived>
@@ -149,3 +176,4 @@ namespace SEM { namespace las{
 
 
 #endif //_Equation_H_
+struct stat;

@@ -25,6 +25,8 @@
 #include "iomanagment/case.h"
 #include "iomanagment/SolutionControl.h"
 
+#include "fieldMath/WeakFormDefinition.h"
+
 namespace SEM{ namespace las {
 
     /** ********************************************************************
@@ -950,6 +952,17 @@ namespace SEM{ namespace las {
         solve(f,matrix,vector,takeChoosenSolver(f));
     }
     
+    //Solve explicit equation - asssign build vector into field component fields
+    template<typename T>
+    void solve(field::GeometricField<T> &f, SEMVector & vector)
+    {
+           for(size_t d=0; d<CmpTraits<T>::dim(); ++d)
+           {
+               CmpTraits<T>::cmpArray(f,d) = vector[d];
+           }
+    }
+    
+    
     /// \brief solve - function which takes equations builders(objects which can
     /// do discretization of it's part of equation and apply those values to
     /// preallocated matrix and rhs vector), fills matrix and vectors with those
@@ -962,15 +975,34 @@ namespace SEM{ namespace las {
     {
         using namespace iomanagment;
 
-        SEMMatrix matrix;
+        
         SEMVector rhsVector;
-
+        SEMMatrix matrix;
+        
         time::Timer timer;
         Info<<"Building equations ..."<<std::endl;
-        equation.buildEquation(matrix,rhsVector);
+        
+        if( equation.isDiagonal() )
+        {
+            equation.buildExplicitEquation(rhsVector);
+        }
+        else
+        {
+            equation.buildEquation(matrix,rhsVector);
+        }
+        
         InfoArrow<<"Equation system build in: "<<timer.elapsed()<<std::endl;
 
-        solve(equation.field(), matrix,rhsVector, solver);
+        if( equation.isDiagonal() )
+        {
+            solve(equation.field(), rhsVector);
+        }
+        else
+        {
+            solve(equation.field(), matrix, rhsVector, solver);
+            InfoArrow<<"Equation system solved in: "<<timer.elapsed()<<std::endl;
+        }
+        
     }
     
     template<typename T, typename Implicit, typename Explicite>
@@ -1003,6 +1035,7 @@ namespace SEM{ namespace las {
         solve( equation, getSolver<T>(solverType) );
     }
     
+
     //-------------------------------------------------------------
     
     template<typename T, typename Implicit, typename Explicite>

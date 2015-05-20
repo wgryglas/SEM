@@ -148,6 +148,32 @@ public:
     
     field::GeometricField<T>* field() const { return &m_field;}
     
+    bool isMatrixDiagonal() const { return true;}
+    
+    template<typename Assigner>
+    void buildMatrixAsDiagonal(const mesh::Mesh &mesh, las::SEMVector & diagonal, las::SEMVector &rhsVector, const las::AssigmentBase<Assigner> &assign) const 
+    {
+        const mesh::Mesh & elements = m_field.mesh();
+        
+        size_t dimSize = CmpTraits<T>::dim();
+        
+        //Iterate over elements
+        for(size_t e=0; e<elements.size(); ++e)
+        {
+           
+            numArray<Scalar> massVector = m_coeff * numArray2D<Scalar>::const_mappedArray(elements[e].massMatrix(), elements[e].localNodesInMatrix()) ;
+            
+            for(size_t dim =0; dim < dimSize; ++dim)
+            {
+                auto rhsElementCmp = diagonal[dim].slice(elements[e].indexVectorMask());
+                
+                //Assign discretization elements to local matrix
+                assign( massVector, rhsElementCmp );
+            }
+        }
+    }
+    
+    
     template<typename Assigner>
     void buildExplicit(const mesh::Mesh &elements, las::SEMVector &rhsVector, const las::AssigmentBase<Assigner> & assign) const
     {

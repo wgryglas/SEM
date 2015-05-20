@@ -10,6 +10,7 @@
 #include "components/CmpTraits.h"
 #include "utilities/ArrayFunctions.h"
 #include "iomanagment/InfoStream.h"
+#include <../applications/poisson/createFileds.h>
 
 namespace SEM {
     
@@ -67,13 +68,11 @@ namespace SEM {
                 }
                 
             }
-            
         }
-    
-        
-        
         
     };
+       
+     
     
 }//SEM
 

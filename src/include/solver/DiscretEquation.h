@@ -73,7 +73,7 @@ public:
         
         for(size_t d=0; d<dim; ++d)
         {
-            rhsVector[d] /= lhsVector[d];
+            rhsVector[d] = rhsVector[d] / lhsVector[d];
         }
     }
     

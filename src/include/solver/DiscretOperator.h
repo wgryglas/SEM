@@ -62,7 +62,7 @@ namespace SEM { namespace las{
         
        bool isMatrixDiagonal() const
        {
-	   static_cast<const Derived*>(this)->isMatrixDiagonal();
+	   return static_cast<const Derived*>(this)->isMatrixDiagonal();
        }
         
         template<typename Assigner>

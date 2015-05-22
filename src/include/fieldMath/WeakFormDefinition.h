@@ -148,7 +148,7 @@ public:
     
     field::GeometricField<T>* field() const { return &m_field;}
     
-    bool isMatrixDiagonal() const { return true;}
+    bool isMatrixDiagonal() const { return true; }
     
     template<typename Assigner>
     void buildMatrixAsDiagonal(const mesh::Mesh &mesh, las::SEMVector & diagonal, las::SEMVector &rhsVector, const las::AssigmentBase<Assigner> &assign) const 

@@ -918,6 +918,32 @@ namespace SEM{ namespace las {
     
     
     template<typename T>
+    void applyDirichletBCToSolution(field::GeometricField<T> &solField)
+    {
+        using namespace field;
+        
+        for(typename GeometricField<T>::Patch* patch: solField.boundaryFields() )
+        {
+            //check if it's exacly dirichlet BC
+            if(patch->typeFamily()==field::DIRICHLET)
+            {
+                const mesh::Boundary & boundary = patch->boundaryEdges();
+                
+                //iterate over egdes
+                for(size_t e=0; e<boundary.size(); ++e)
+                {
+                    const mesh::BoundaryEdge & edge = boundary[e];
+                    
+                    // assign edge values to boundary
+                    solField.slice(edge.gNodesIds()) = (*patch)[e];
+                }
+            }
+        }
+ 
+    }
+    
+    
+    template<typename T>
     void solve(field::GeometricField<T> &f, SEMMatrix &matrix, SEMVector &vector, Solver<T>* solver)
     {
         using namespace SEM::iomanagment;
@@ -984,6 +1010,8 @@ namespace SEM{ namespace las {
         
         if( equation.isDiagonal() )
         {
+            Info<<"Selected explicit solver ..."<<std::endl;
+            applyDirichletBCToSolution(equation.field());
             equation.buildExplicitEquation(rhsVector);
         }
         else

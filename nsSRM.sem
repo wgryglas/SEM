@@ -1,0 +1,20 @@
+application nsSRM;
+
+transient yes;
+
+
+steady	  no;
+
+
+description "Solves transient incompressible navier-stokes equation. Use as viscosity material variable called nu. As result calculates velocity and pressure field. Pressure field do not require boundary conditions, and for veolcity field there user can apply Dirichlet BC value on each boundary. Implements explicit time integration and sequential regularization method to enforce incompressibility constrain";
+
+
+fields 
+{
+	U
+ 	{
+		type vector;
+		boundaryConditions ("vectorFixedValue" "vectorTimeChangingValue" "vectorExpressionValue");
+	}
+}
+

@@ -40,62 +40,71 @@ void computeNewTimestep
     using namespace SEM::mesh;
     
     const Mesh & elements = U.mesh();
-    
-//     VectorField tmp("tmp", elements, iomanagment::NO_READ, iomanagment::NO_WRITE);
-//     
-// //    numArray<Scalar> coeffs(4);
-// //    coeffs[0] = 1; coeffs[1]=0.5; coeffs[2]=0.5; coeffs[3]=1;
+
+// ---------------------------- rk4 --------------------------------------------
+/*
+     VectorField tmp("tmp", elements, iomanagment::NO_READ, iomanagment::NO_WRITE);
+     numArray<Vector> mass(U.size(), 0.);
+    numArray<Scalar> coeffs(4);
+    coeffs[0] = 1; coeffs[1]=0.5; coeffs[2]=0.5; coeffs[3]=1;
 //     numArray<Scalar> coeffs(1);
 //     coeffs[0] = 1; 
-//     
-//     numArray<numArray<Vector> > k(coeffs.size());
-//     for(int i=0; i<k.size(); ++i) k[i].resize(U.size(),0.);
-//     
-//     for(int i=0; i<coeffs.size(); ++i)
-//     {    
-//         if(i>0)
-//             tmp = U + coeffs[i]*k[i-1];
-//         else
-//             tmp = U;
-//         
-//         DiscontinousField<Scalar> divU = div(tmp);
-//         DiscontinousField<Scalar> forcing = ps - (alpha1/eps)*(divU-divU_prev)/dt - (alpha2/eps)*divU;
-//         
-//         for( size_t e=0; e < elements.size(); ++e )
-//         {
-//             numArray2D<Scalar> eStiff=elements[e].stiffMatrix(nu);
-//             const numArray<Scalar>& localPs = forcing.element(e);
-//             numArray<Vector> localPsGradW;
-//             elements[e].weakGradV(localPs,localPsGradW);
-//             numArray2D<Scalar>::const_mappedArray massVector = elements[e].massMatrix().sliceArray( elements[e].localNodesInMatrix() );
-//             
-//             for(int dim=0; dim<2; ++dim)
-//             {
-//                 auto cmpRhs = CmpTraits<Vector>::cmpArray(k[i],dim);
-//                 auto localCmpRhs = cmpRhs.slice(elements[e].indexVectorMask());
-//                 
-//                 auto cmpU = CmpTraits<Vector>::cmpArray(tmp,dim);
-//                 auto localCmpU = cmpU.slice(elements[e].indexVectorMask());
-//     
-//             
-//                 auto cmpLocalPsGradW = CmpTraits<Vector>::cmpArray(localPsGradW,dim);
-//                 
-//                 //localCmpRhs  = (dt*SEM::array::matrixMul(eStiff,localCmpU) + dt*cmpLocalPsGradW) / massVector;
-//                 localCmpRhs  = (-dt*SEM::array::matrixMul(eStiff,localCmpU) ) / massVector;
-//             }
-//         }
-//     }
-//     
-//     Scalar fact=0;
-//     for(int i=0; i<coeffs.size(); ++i) fact += 1./coeffs[i];
-//     
-//     for(int i=0; i<coeffs.size(); ++i)
-//     {
-//         U = U + k[i]/(coeffs[i]*fact);
-//     }
-//     
-//     las::applyDirichletBCToSolution(U);
-    
+     
+     numArray< numArray<Vector> > k(coeffs.size());
+     for(int i=0; i<k.size(); ++i) k[i].resize(U.size(),0.);
+     
+     for(int i=0; i<coeffs.size(); ++i)
+     {    
+         if(i>0)
+             tmp = U + coeffs[i] * dt * k[i-1] / mass;
+         else
+             tmp = U;
+         
+         DiscontinousField<Scalar> divU = div(tmp);
+         DiscontinousField<Scalar> forcing = ps - (alpha1/eps)*(divU-divU_prev)/dt - (alpha2/eps)*divU;
+
+         for( size_t e=0; e < elements.size(); ++e )
+         {
+	     numArray2D<Scalar> eStiff=elements[e].stiffMatrix(nu);
+             numArray2D<Scalar>::const_mappedArray massVector = elements[e].massMatrix().sliceArray( elements[e].localNodesInMatrix() );
+             numArray<Vector> localPsGradW;
+             elements[e].weakGradV(forcing.element(e),localPsGradW);
+             numArray2D<Scalar> derivMat = elements[e].convDerivMatrix(U.element(e));
+
+	     for(int dim=0; dim<2; ++dim)
+	     {
+		  auto cmpMass = CmpTraits<Vector>::cmpArray(mass,dim);
+		  auto localCmpMass = cmpMass.slice(elements[e].indexVectorMask());
+		    
+		  auto cmpRhs = CmpTraits<Vector>::cmpArray(k[i],dim);
+		  auto localCmpRhs = cmpRhs.slice(elements[e].indexVectorMask());
+		    
+		  auto cmpU = CmpTraits<Vector>::cmpArray(tmp,dim);
+		  auto localCmpU = cmpU.slice(elements[e].indexVectorMask());
+		    
+		  auto cmpLocalPsGradW = CmpTraits<Vector>::cmpArray(localPsGradW,dim);
+		    
+		  numArray<Scalar> convection(SEM::array::matrixMul(derivMat,localCmpU));
+		    
+		  localCmpRhs  +=  cmpLocalPsGradW - SEM::array::matrixMul(eStiff,localCmpU) - convection * massVector;
+		  
+                  if(i == 0) localCmpMass += massVector;
+	     }
+	}
+     }
+ 
+     Scalar fact=0;
+     for(int i=0; i<coeffs.size(); ++i) fact += 1./coeffs[i];
+     
+     U = U.oldField(0);
+     for(int i=0; i<coeffs.size(); ++i)
+     {
+         U += ( dt/(coeffs[i]*fact) ) * k[i] / mass;
+     }
+     
+*/
+// ------------------------------------ euler -----------------------------------
+
      numArray<Vector> rhs(U.size(), 0.);
      numArray<Vector> mass(U.size(), 0.);
      
@@ -126,15 +135,9 @@ void computeNewTimestep
             
             auto cmpLocalPsGradW = CmpTraits<Vector>::cmpArray(localPsGradW,dim);
             
-            //auto cmpLocalConv = CmpTraits<Vector>::cmpArray(localConv,dim);
- 
-            
             numArray<Scalar> convection(SEM::array::matrixMul(derivMat,localCmpU));
             
-           //iomanagment::write(SEM::array::max(SEM::array::abs(convection) ), std::cout) <<std::endl;
-            
-            
-            localCmpRhs  +=  cmpLocalPsGradW - SEM::array::matrixMul(eStiff,localCmpU) - convection * localCmpMass;
+            localCmpRhs  +=  cmpLocalPsGradW - SEM::array::matrixMul(eStiff,localCmpU) - convection * massVector;
             
             localCmpMass += massVector;
         }
@@ -142,9 +145,61 @@ void computeNewTimestep
      
      U = U.oldField(0) + dt* rhs / mass;
      
-     las::applyDirichletBCToSolution(U);
-     
-     iomanagment::write( SEM::array::max(U) ,std::cout<<"max U:")<<std::endl;
+
+//------------------ adams-bashford mehtod --------------------------------------
+/*    
+    numArray< numArray<Vector> > rhs(2);
+    for(int i=0; i<2; ++i) rhs[i].resize(U.size(),0.);
+
+    numArray<Vector> mass(U.size(), 0.);
+    
+    DiscontinousField<Scalar> divU = div(U);
+    DiscontinousField<Scalar> forcing = ps;
+    for(int i=0; i<2; ++i)
+    {        
+        if(i == 0)
+           forcing -= (alpha1/eps)*(divU-divU_prev)/dt + (alpha2/eps)*divU;
+        else
+           forcing = ps - (alpha1/eps)*(div(U) - divU)/dt + (alpha2/eps)*div(U);
+
+        for( size_t e=0; e < elements.size(); ++e )
+        {
+            numArray2D<Scalar> eStiff=elements[e].stiffMatrix(nu);
+            numArray2D<Scalar>::const_mappedArray massVector = elements[e].massMatrix().sliceArray( elements[e].localNodesInMatrix() );
+            numArray<Vector> localPsGradW;
+            //const numArray<Vector> & localConv = conv.element(e);
+            elements[e].weakGradV(forcing.element(e),localPsGradW);
+            
+            numArray2D<Scalar> derivMat = elements[e].convDerivMatrix(U.element(e));
+        
+            for(int dim=0; dim<2; ++dim)
+            {
+                auto cmpMass = CmpTraits<Vector>::cmpArray(mass,dim);
+                auto localCmpMass = cmpMass.slice(elements[e].indexVectorMask());
+                
+                auto cmpRhs = CmpTraits<Vector>::cmpArray(rhs[i],dim);
+                auto localCmpRhs = cmpRhs.slice(elements[e].indexVectorMask());
+                
+                auto cmpU = CmpTraits<Vector>::cmpArray(U,dim);
+                auto localCmpU = cmpU.slice(elements[e].indexVectorMask());
+                
+                auto cmpLocalPsGradW = CmpTraits<Vector>::cmpArray(localPsGradW,dim);
+                
+                numArray<Scalar> convection(SEM::array::matrixMul(derivMat,localCmpU));
+                
+                localCmpRhs  +=  cmpLocalPsGradW - SEM::array::matrixMul(eStiff,localCmpU) - convection * massVector;
+                
+                if(i==0) localCmpMass += massVector;
+            }
+        }
+
+        if(i==0) U = U.oldField(0) + dt* rhs[0] / mass;
+        else     U = U.oldField(0) + dt* 0.5*(rhs[0] + rhs[1]) / mass;
+    }
+*/
+    las::applyDirichletBCToSolution(U);
+
+    iomanagment::write( SEM::array::max(U) ,std::cout<<"max U:")<<std::endl;
 }
 
 
@@ -189,7 +244,7 @@ int main(int argc, char* args[])
     Scalar nu = Case::material()["nu"];
     
     //--------------------- SOLVE EQUATION -----------------------------------
-    Scalar eps = 1e6;
+    Scalar eps = 1e5;
     Scalar alpha1=1;
     Scalar alpha2=1;
     
@@ -212,7 +267,7 @@ int main(int argc, char* args[])
     {
         ++Case::time();
         
-        for(int s=0; s< 4; ++s) //selectDiscretizationScheme(U).size()
+        for(int s=0; s< 2; ++s) //selectDiscretizationScheme(U).size()
         {
             
             //DiscontinousField<Vector> convU = dt*cDeriv(U,U);
@@ -222,7 +277,7 @@ int main(int argc, char* args[])
             //las::applyDirichletBCToSolution(U);
             
             
-            computeNewTimestep(U, disP, divU, nu, dt, alpha1, alpha2, eps);
+            computeNewTimestep(U, disP, divU_old, nu, dt, alpha1, alpha2, eps);
 
             
 //             las::solve
@@ -249,7 +304,7 @@ int main(int argc, char* args[])
         divU_old = divU;
         
         p = disP;
-	divergence = divU;
+	    divergence = divU;
         
         Case::time().fireWriting();
         

@@ -27,12 +27,13 @@ void computeNewTimestep
 (
     SEM::field::GeometricField<SEM::Vector> & U, 
     const SEM::field::DiscontinousField<SEM::Scalar> & ps, 
-    const SEM::field::DiscontinousField<SEM::Scalar> & divU_prev, 
+    //const SEM::field::DiscontinousField<SEM::Scalar> & divU_prev, 
     SEM::Scalar nu, 
     SEM::Scalar dt,
     SEM::Scalar alpha1,
     SEM::Scalar alpha2,
-    SEM::Scalar eps
+    SEM::Scalar eps,
+    bool predictTime = false
 )
 {
     using namespace SEM;
@@ -108,8 +109,15 @@ void computeNewTimestep
      numArray<Vector> rhs(U.size(), 0.);
      numArray<Vector> mass(U.size(), 0.);
      
-     DiscontinousField<Scalar> divU = div(U);
-     DiscontinousField<Scalar> forcing = ps - (alpha1/eps)*(divU-divU_prev)/dt - (alpha2/eps)*divU;
+     //DiscontinousField<Scalar> divU = div(U);
+     static VectorField ddtU("ddtU", U.mesh(), SEM::iomanagment::NO_READ, SEM::iomanagment::NO_WRITE);
+     
+//      if(predictTime)
+//         ddtU = (U.oldField(0)-U.oldField(1) )/dt;
+//      else
+        ddtU = (U - U.oldField(0)) / dt;
+     
+     DiscontinousField<Scalar> forcing = ps - (alpha1/eps)*div(ddtU) - (alpha2/eps)*div(U);
      //DiscontinousField<Vector> conv  = cDeriv(U,U);
 
      for( size_t e=0; e < elements.size(); ++e )
@@ -145,7 +153,6 @@ void computeNewTimestep
      
      U = U.oldField(0) + dt* rhs / mass;
      
-
 //------------------ adams-bashford mehtod --------------------------------------
 /*    
     numArray< numArray<Vector> > rhs(2);
@@ -193,7 +200,7 @@ void computeNewTimestep
             }
         }
 
-        if(i==0) U = U.oldField(0) + dt* rhs[0] / mass;
+        if(i==0) U = U.oldField(0) + dt* rhs[0] / mass;VectorField ddtU("ddtU", U.mesh(), SEM::iomanagment::NO_READ, SEM::iomanagment::NO_WRITE);
         else     U = U.oldField(0) + dt* 0.5*(rhs[0] + rhs[1]) / mass;
     }
 */
@@ -244,7 +251,7 @@ int main(int argc, char* args[])
     Scalar nu = Case::material()["nu"];
     
     //--------------------- SOLVE EQUATION -----------------------------------
-    Scalar eps = 1e5;
+    Scalar eps = 1e6;
     Scalar alpha1=1;
     Scalar alpha2=1;
     
@@ -260,12 +267,12 @@ int main(int argc, char* args[])
 
     DiscontinousField<Scalar> disP(mesh);
     
-      
-    
+   
     //solve time loop
     while(!Case::time().end())
     {
         ++Case::time();
+       
         
         for(int s=0; s< 2; ++s) //selectDiscretizationScheme(U).size()
         {
@@ -276,10 +283,8 @@ int main(int argc, char* args[])
 	   
             //las::applyDirichletBCToSolution(U);
             
-            
-            computeNewTimestep(U, disP, divU_old, nu, dt, alpha1, alpha2, eps);
+            computeNewTimestep(U, disP, nu, dt, alpha1, alpha2, eps);
 
-            
 //             las::solve
 //             (
 //                 a(ddt(U), phi )  == a( -nu*grad(U), grad(phi)) //a( disP -(alpha1/eps*ddtDivU+alpha2/eps*divU), grad(phi) ) //
@@ -292,19 +297,16 @@ int main(int argc, char* args[])
             
             //las::solve( a( U, phi ) == rhs );
             
-            las::applyDirichletBCToSolution(U);
-            
             divU = div(U);
-            ddtU = ddt(U);
-            ddtDivU += div(ddtU);
+            ddtU = (U - U.oldField(0)) / dt;
             
-            disP = disP  - ( (alpha1/eps)*divU + (alpha2/eps)*ddtDivU);
+            disP = disP  - ( alpha1*divU + alpha2*div(ddtU))/eps;
         }
         
-        divU_old = divU;
+        //divU_old = divU;
         
         p = disP;
-	    divergence = divU;
+	divergence = divU;
         
         Case::time().fireWriting();
         

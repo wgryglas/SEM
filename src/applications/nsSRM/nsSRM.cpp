@@ -112,9 +112,9 @@ void computeNewTimestep
      //DiscontinousField<Scalar> divU = div(U);
      static VectorField ddtU("ddtU", U.mesh(), SEM::iomanagment::NO_READ, SEM::iomanagment::NO_WRITE);
      
-//      if(predictTime)
-//         ddtU = (U.oldField(0)-U.oldField(1) )/dt;
-//      else
+     if(predictTime)
+        ddtU = (U.oldField(0)-U.oldField(1) )/dt;
+     else
         ddtU = (U - U.oldField(0)) / dt;
      
      DiscontinousField<Scalar> forcing = ps - (alpha1/eps)*div(ddtU) - (alpha2/eps)*div(U);
@@ -207,6 +207,52 @@ void computeNewTimestep
     las::applyDirichletBCToSolution(U);
 
     iomanagment::write( SEM::array::max(U) ,std::cout<<"max U:")<<std::endl;
+}
+
+void projectVelocity(SEM::field::VectorField &U)
+{
+    using namespace SEM;
+    using namespace SEM::field;
+    using namespace SEM::mesh;
+    const Mesh & elements = U.mesh();
+    
+    double alpha = 1;
+    
+    DiscontinousField<Scalar> q(elements);
+    q = 0.;
+    numArray<Vector> rhs(U.size(), 0.);
+    numArray<Vector> mass(U.size(), 0.);
+    
+    for(int i=0; i<5; ++i)
+    {
+        DiscontinousField<Scalar> forcing = alpha*div(U) - q; 
+        
+        for( size_t e=0; e < elements.size(); ++e )
+        {
+            numArray2D<Scalar>::const_mappedArray massVector = elements[e].massMatrix().sliceArray( elements[e].localNodesInMatrix() );
+            numArray<Vector> localPsGradW;
+            elements[e].weakGradV(forcing.element(e),localPsGradW);
+            
+            for(int dim=0; dim<2; ++dim)
+            {
+                auto cmpMass = CmpTraits<Vector>::cmpArray(mass,dim);
+                auto localCmpMass = cmpMass.slice(elements[e].indexVectorMask());
+                
+                auto cmpLocalPsGradW = CmpTraits<Vector>::cmpArray(localPsGradW,dim);
+                
+                auto cmpRhs = CmpTraits<Vector>::cmpArray(rhs,dim);
+                auto localCmpRhs = cmpRhs.slice(elements[e].indexVectorMask());
+                
+                localCmpRhs  +=  cmpLocalPsGradW ;
+                
+                if(i == 0)
+                    localCmpMass += massVector;
+            }
+        }
+        
+        U = U  + rhs / mass;
+        q = q - alpha * div(U);
+    }
 }
 
 
@@ -302,6 +348,8 @@ int main(int argc, char* args[])
             
             disP = disP  - ( alpha1*divU + alpha2*div(ddtU))/eps;
         }
+        
+        projectVelocity(U);
         
         //divU_old = divU;
         

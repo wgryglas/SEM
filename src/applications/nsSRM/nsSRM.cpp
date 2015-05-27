@@ -1,3 +1,5 @@
+#include "sstream"
+
 #include "iomanagment/case.h"
 #include "mesh/Mesh.h"
 #include "fields/Fields.h"
@@ -209,11 +211,14 @@ void computeNewTimestep
     iomanagment::write( SEM::array::max(U) ,std::cout<<"max U:")<<std::endl;
 }
 
+/*
 void projectVelocity(SEM::field::VectorField &U)
 {
     using namespace SEM;
     using namespace SEM::field;
     using namespace SEM::mesh;
+
+
     const Mesh & elements = U.mesh();
     
     double alpha = 1;
@@ -254,7 +259,60 @@ void projectVelocity(SEM::field::VectorField &U)
         q = q - alpha * div(U);
     }
 }
+*/
 
+void advanceInTime(SEM::field::VectorField &U, SEM::field::DiscontinousField<SEM::Scalar> &p_prev, SEM::field::DiscontinousField<SEM::Scalar> &p_next, SEM::Scalar dt, SEM::Scalar nu, SEM::Scalar alpha1, SEM::Scalar alpha2)
+{
+     using namespace SEM;
+     using namespace SEM::field;
+     using namespace SEM::mesh;
+
+     const Mesh & elements = U.mesh();
+
+     static VectorField ddtU("ddtU", U.mesh(), SEM::iomanagment::NO_READ, SEM::iomanagment::NO_WRITE);
+
+     numArray<Vector> mass(U.size(), 0.);
+     numArray<Vector> rhs(U.size(), 0.);
+     
+     ddtU = (U.oldField(0)-U.oldField(1) )/dt;
+        
+     DiscontinousField<Scalar> forcing = p_prev - alpha1*div(ddtU) - alpha2*div(U);
+ 
+     for( size_t e=0; e < elements.size(); ++e )
+     {
+        numArray2D<Scalar> eStiff=elements[e].stiffMatrix(nu);
+        numArray2D<Scalar>::const_mappedArray massVector = elements[e].massMatrix().sliceArray( elements[e].localNodesInMatrix() );
+        numArray<Vector> localPsGradW;
+        elements[e].weakGradV(forcing.element(e),localPsGradW);
+        
+        numArray2D<Scalar> derivMat = elements[e].convDerivMatrix(U.element(e));
+        
+        for(int dim=0; dim<2; ++dim)
+        {
+            auto cmpMass = CmpTraits<Vector>::cmpArray(mass,dim);
+            auto localCmpMass = cmpMass.slice(elements[e].indexVectorMask());
+            
+            auto cmpRhs = CmpTraits<Vector>::cmpArray(rhs,dim);
+            auto localCmpRhs = cmpRhs.slice(elements[e].indexVectorMask());
+            
+            auto cmpU = CmpTraits<Vector>::cmpArray(U,dim);
+            auto localCmpU = cmpU.slice(elements[e].indexVectorMask());
+            
+            auto cmpLocalPsGradW = CmpTraits<Vector>::cmpArray(localPsGradW,dim);
+            
+            numArray<Scalar> convection(SEM::array::matrixMul(derivMat,localCmpU));
+            
+            localCmpRhs  +=  cmpLocalPsGradW - SEM::array::matrixMul(eStiff,localCmpU) - convection * massVector;
+            
+            localCmpMass += massVector;
+        }
+     }
+     
+     ddtU = rhs / mass;
+
+     U = U.oldField(0) + dt*ddtU;
+     p_next = p_prev - ( alpha1*div(ddtU) + alpha2*div(U)); 
+}
 
 
 int main(int argc, char* args[])
@@ -271,6 +329,9 @@ int main(int argc, char* args[])
     using SEM::weak::a;
     using SEM::weak::bInt_rotUdotNxGradPhi;
     using SEM::weak::bInt_UdotNPhi;
+    using boost::shared_ptr;
+
+    int srmOrder = 4;
     
     //--------------------- SETUP CASE --------------------------------------
     Case::setup(argc, args);
@@ -280,17 +341,41 @@ int main(int argc, char* args[])
     mesh.writeSpectralNodes(Case::nodesPath());
    
     //--------------------- CREATE FIELDS -----------------------------------
-    //Create U field
-    VectorField U("U",mesh);
-    
-     
-    //Create p field
+    numArray<shared_ptr<VectorField> > Us(4);
+    numArray<shared_ptr<DiscontinousField<Scalar> > > ps_old(4);
+    numArray<shared_ptr<DiscontinousField<Scalar> > > ps_new(4);
     ScalarField p("p",mesh,NO_READ);
+    ScalarField divergence("divU",mesh,NO_READ);
+
+    for(int i=0; i<srmOrder; ++i)
+    {
+        if(i!=srmOrder-1)
+        {
+            std::stringstream uName("U");
+            uName << "_"<<i;
+            Us[i]= boost::shared_ptr<VectorField>( new VectorField(uName.str(),mesh,NO_READ, NO_WRITE) );
+        }
+        else
+        {
+            Us[i] = boost::shared_ptr<VectorField>( new VectorField("U",mesh) );
+        }
+
+        ps_old[i] = boost::shared_ptr<DiscontinousField<Scalar> >( new DiscontinousField<Scalar>(mesh) );
+        ps_new[i] = boost::shared_ptr<DiscontinousField<Scalar> >( new DiscontinousField<Scalar>(mesh) );
+    }
+
     
-    VectorField ddtU("ddtU",mesh,NO_READ,NO_WRITE);
-    
-    ScalarField divergence("divU", mesh, NO_READ);
-    
+    las::applyDirichletBCToSolution(*Us[srmOrder-1]);
+    (*const_cast<numArray<Vector>*>(&Us[srmOrder-1]->oldField(0))) = *Us[srmOrder-1];
+
+    for(int i=0; i<srmOrder-1; ++i)
+    {
+        (*Us[i]) == (*Us[srmOrder-1]);    
+        (*const_cast<numArray<Vector>*>(&Us[i]->oldField(0))) = *Us[srmOrder-1];
+    }
+
+
+        
     //--------------------- GET COEFFS -----------------------------------
     Scalar dt = Case::time().timeStep();
     
@@ -300,67 +385,35 @@ int main(int argc, char* args[])
     Scalar eps = 1e6;
     Scalar alpha1=1;
     Scalar alpha2=1;
-    
-    las::applyDirichletBCToSolution(U);
-    (*const_cast<numArray<Vector>*>(&U.oldField(0))) = U;
 
-    DiscontinousField<Scalar> divU(mesh);
-    divU = div(U);
-    DiscontinousField<Scalar> divU_old(divU);
-    
-    DiscontinousField<Scalar> ddtDivU(mesh);
-    ddtDivU = 0;
-
-    DiscontinousField<Scalar> disP(mesh);
-    
-   
+    DiscontinousField<Scalar> zeroP(mesh);
+    zeroP = 0;
+       
     //solve time loop
     while(!Case::time().end())
     {
         ++Case::time();
        
-        
-        for(int s=0; s< 2; ++s) //selectDiscretizationScheme(U).size()
+        for(int s=0; s< srmOrder; ++s) 
         {
-            
-            //DiscontinousField<Vector> convU = dt*cDeriv(U,U);
-            //auto rhs =  a(U.oldField(0),phi) + a( (dt*nu)*grad(U), grad(phi) )  - a( dt*disP, grad(phi) ) + a( (dt*alpha1)*ddtDivU+(dt*alpha2)*divU, grad(phi) ); //-  a( convU, phi )
-//            auto rhs =  a(eps/dt*U.oldField(0),phi) + a( (eps*nu)*grad(U), grad(phi) )  - a( eps*cDeriv(U,U), phi ) - a( eps*disP, grad(phi) );
-	   
-            //las::applyDirichletBCToSolution(U);
-            
-            computeNewTimestep(U, disP, nu, dt, alpha1, alpha2, eps);
-
-//             las::solve
-//             (
-//                 a(ddt(U), phi )  == a( -nu*grad(U), grad(phi)) //a( disP -(alpha1/eps*ddtDivU+alpha2/eps*divU), grad(phi) ) //
-//             );
-            
-//             las::solve
-//             (
-//                     a(ddt(U), phi) == a(-nu*grad(U), grad(phi))
-//             );
-            
-            //las::solve( a( U, phi ) == rhs );
-            
-            divU = div(U);
-            ddtU = (U - U.oldField(0)) / dt;
-            
-            disP = disP  - ( alpha1*divU + alpha2*div(ddtU))/eps;
+            if(s==0)
+            {
+                advanceInTime(*Us[s], zeroP, *ps_new[s], dt, nu, alpha1, alpha2);
+            }
+            else
+            {
+                advanceInTime(*Us[s], *ps_old[s-1], *ps_new[s], dt, nu, alpha1, alpha2);
+            }
         }
         
-        projectVelocity(U);
+        p = *ps_new[srmOrder-1];
+	    divergence = div(*Us[srmOrder-1]);
         
-        //divU_old = divU;
-        
-        p = disP;
-	divergence = divU;
-        
+        for(int s=0; s<srmOrder; ++s)
+            (*ps_old[s]) = (*ps_new[s]);
+
         Case::time().fireWriting();
-        
     }
-    
-    
     
     return 0;
 }

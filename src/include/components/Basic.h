@@ -289,16 +289,16 @@ namespace SEM
     /// and scalar value
     /////////////////////////////////////////////////
     #define VEC_SCALAR_OPERATOR(SIGN)                                                \
-    template<typename T, size_t N>                                                   \
-    VectorTX<T,N> operator SIGN (const T &lhs, const VectorTX<T,N> &rhs)             \
+    template<typename T, typename E, size_t N>                                       \
+    VectorTX<T,N> operator SIGN (const E &lhs, const VectorTX<T,N> &rhs)             \
     {                                                                                \
         VectorTX<T,N> res;                                                           \
         for(int i=0; i<N; i++)                                                       \
             res[i] = lhs SIGN rhs[i];                                                \
         return res;                                                                  \
     }                                                                                \
-    template<typename T, size_t N>                                                   \
-    VectorTX<T,N> operator SIGN (const VectorTX<T,N> &lhs, const T &rhs)             \
+    template<typename T, typename E, size_t N>                                       \
+    VectorTX<T,N> operator SIGN (const VectorTX<T,N> &lhs, const E &rhs)             \
     {                                                                                \
         VectorTX<T,N> res;                                                           \
         for(int i=0; i<N; i++)                                                       \

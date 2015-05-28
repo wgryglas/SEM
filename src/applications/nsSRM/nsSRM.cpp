@@ -276,7 +276,7 @@ void advanceInTime(SEM::field::VectorField &U, SEM::field::DiscontinousField<SEM
      
      ddtU = (U.oldField(0)-U.oldField(1) )/dt;
         
-     DiscontinousField<Scalar> forcing = p_prev - alpha1*div(ddtU) - alpha2*div(U);
+     DiscontinousField<Scalar> forcing = p_prev - alpha2*div(U);//( alpha1*div(ddtU) + alpha2*div(U) );
  
      for( size_t e=0; e < elements.size(); ++e )
      {
@@ -311,7 +311,16 @@ void advanceInTime(SEM::field::VectorField &U, SEM::field::DiscontinousField<SEM
      ddtU = rhs / mass;
 
      U = U.oldField(0) + dt*ddtU;
+     
+     SEM::las::applyDirichletBCToSolution(U);
+     
      p_next = p_prev - ( alpha1*div(ddtU) + alpha2*div(U)); 
+     
+     if( ! SEM::CmpTraits<Vector>::isValid(SEM::array::avg(U)) )
+     {
+         ErrorInFunction<<"Solution did not converged"<<iomanagment::endProgram;
+     }
+     
 }
 
 
@@ -341,9 +350,9 @@ int main(int argc, char* args[])
     mesh.writeSpectralNodes(Case::nodesPath());
    
     //--------------------- CREATE FIELDS -----------------------------------
-    numArray<shared_ptr<VectorField> > Us(4);
-    numArray<shared_ptr<DiscontinousField<Scalar> > > ps_old(4);
-    numArray<shared_ptr<DiscontinousField<Scalar> > > ps_new(4);
+    numArray<shared_ptr<VectorField> > Us(srmOrder);
+//     numArray<shared_ptr<DiscontinousField<Scalar> > > ps_old(5);
+//     numArray<shared_ptr<DiscontinousField<Scalar> > > ps_new(5);
     ScalarField p("p",mesh,NO_READ);
     ScalarField divergence("divU",mesh,NO_READ);
 
@@ -358,12 +367,17 @@ int main(int argc, char* args[])
         else
         {
             Us[i] = boost::shared_ptr<VectorField>( new VectorField("U",mesh) );
-        }
-
-        ps_old[i] = boost::shared_ptr<DiscontinousField<Scalar> >( new DiscontinousField<Scalar>(mesh) );
-        ps_new[i] = boost::shared_ptr<DiscontinousField<Scalar> >( new DiscontinousField<Scalar>(mesh) );
+        }        
     }
-
+    
+//     for(int i=0; i<srmOrder+1; ++i)
+//     {
+//         ps_old[i] = boost::shared_ptr<DiscontinousField<Scalar> >( new DiscontinousField<Scalar>(mesh) );
+//         ps_new[i] = boost::shared_ptr<DiscontinousField<Scalar> >( new DiscontinousField<Scalar>(mesh) );
+//         (*ps_old[i])=0;
+//         (*ps_new[i])=0;
+//     }
+    
     
     las::applyDirichletBCToSolution(*Us[srmOrder-1]);
     (*const_cast<numArray<Vector>*>(&Us[srmOrder-1]->oldField(0))) = *Us[srmOrder-1];
@@ -382,13 +396,16 @@ int main(int argc, char* args[])
     Scalar nu = Case::material()["nu"];
     
     //--------------------- SOLVE EQUATION -----------------------------------
-    Scalar eps = 1e6;
-    Scalar alpha1=1;
-    Scalar alpha2=1;
+    Scalar eps = 0.1;
+    Scalar alpha1=0.;
+    Scalar alpha2=1.;
 
-    DiscontinousField<Scalar> zeroP(mesh);
-    zeroP = 0;
+//     DiscontinousField<Scalar> zeroP(mesh);
+//     zeroP = 0;
        
+    DiscontinousField<Scalar> press(mesh);
+    press = 0;
+    
     //solve time loop
     while(!Case::time().end())
     {
@@ -396,22 +413,21 @@ int main(int argc, char* args[])
        
         for(int s=0; s< srmOrder; ++s) 
         {
-            if(s==0)
-            {
-                advanceInTime(*Us[s], zeroP, *ps_new[s], dt, nu, alpha1, alpha2);
-            }
-            else
-            {
-                advanceInTime(*Us[s], *ps_old[s-1], *ps_new[s], dt, nu, alpha1, alpha2);
-            }
+            advanceInTime(*Us[s], press, press, dt, nu, alpha1/eps, alpha2/eps);//zeroP
+            
+//             VectorField & U = *Us[s];
+//             las::solve( 
+//                         a(ddt(U), phi) + a(nu*grad(U), grad(phi) ) == a( press - alpha2/eps*div(U), grad(phi) ) - a(cDeriv(U,U),phi)
+//                       );
+//             press -= alpha2/eps*div(U);
         }
         
-        p = *ps_new[srmOrder-1];
-	    divergence = div(*Us[srmOrder-1]);
+        //p = *ps_new[srmOrder-1];
+        p = press;
+	divergence = div(*Us[srmOrder-1]);
         
-        for(int s=0; s<srmOrder; ++s)
-            (*ps_old[s]) = (*ps_new[s]);
-
+        press = 0;
+        
         Case::time().fireWriting();
     }
     
